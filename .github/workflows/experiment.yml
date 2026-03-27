@@ -1,6 +1,12 @@
 name: Research Experiment
 on:
-  workflow_dispatch: # Manual "Run" button in GitHub
+  workflow_dispatch: # Manual "Run" button
+
+env:
+  REQUEST_CPU: 3      # Examples: 3 (Small), 10, or ALL for the whole machine
+  REQUEST_MEM: 16G    # Examples: 8G, 32G, 60G
+  REQUEST_GPU: 1      # Use 1 for the T1000 (8GB), Use 0 for CPU-only
+# ---------------------------------
 
 jobs:
   build-and-queue:
@@ -11,22 +17,35 @@ jobs:
 
       - name: Build Docker Image
         run: |
-          # Build with a unique name based on the repository
-          docker build -t lab-image-${{ github.event.repository.name }} .
+          # Convert repository name to lowercase to satisfy Docker rules
+          REPO_NAME=$(echo "${{ github.event.repository.name }}" | tr '[:upper:]' '[:lower:]')
+          docker build -t "lab-image-$REPO_NAME" .
+          
+          # Export for the next step within the same run block
+          echo "IMAGE_NAME=lab-image-$REPO_NAME" >> $GITHUB_ENV
 
       - name: Submit to Slurm Queue
         run: |
-          # INSTRUCTIONS: Uncomment ONLY ONE of the 'sbatch' lines below 
-          # based on the resource requirements of your experiment.
+          # 1. Logic for CPU "ALL" vs Number
+          if [ "$REQUEST_CPU" == "ALL" ]; then
+            CPU_FLAG="--exclusive"
+          else
+            CPU_FLAG="--cpus-per-task=$REQUEST_CPU"
+          fi
 
-          # --- OPTION 1: FULL POWER (All 20 CPU Cores + High RAM) ---
-          # Use this for heavy data processing that doesn't need a GPU.
-          # sbatch --job-name=${{ github.event.repository.name }} --cpus-per-task=20 --mem=60G /home/wiser/scripts/run_experiment.sh lab-image-${{ github.event.repository.name }}
+          # 2. Logic for the GPU flag
+          if [ "$REQUEST_GPU" -eq 1 ]; then
+            GRES_FLAG="--gres=gpu:1"
+          else
+            GRES_FLAG=""
+          fi
 
-          # --- OPTION 2: LIGHT CPU (3 Cores + Lower RAM) ---
-          # Use this for small scripts. Allows other students to run tasks in parallel.
-          # sbatch --job-name=${{ github.event.repository.name }} --cpus-per-task=3 --mem=8G /home/wiser/scripts/run_experiment.sh lab-image-${{ github.event.repository.name }}
-
-          # --- OPTION 3: AI EXPERIMENT (3 Cores + GPU + 16GB RAM) ---
-          # Use this for model training. This will BLOCK the T1000 for other students.
-          sbatch --job-name=${{ github.event.repository.name }} --cpus-per-task=3 --gres=gpu:1 --mem=16G /home/wiser/scripts/run_experiment.sh lab-image-${{ github.event.repository.name }}
+          # 3. Submit to sbatch
+          # We use the IMAGE_NAME we saved in the previous step
+          sbatch --job-name="${{ github.event.repository.name }}" \
+                 $CPU_FLAG \
+                 --mem="$REQUEST_MEM" \
+                 $GRES_FLAG \
+                 /home/wiser/scripts/run_experiment.sh \
+                 "$IMAGE_NAME" \
+                 "${{ github.actor }}"
