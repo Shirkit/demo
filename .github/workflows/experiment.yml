@@ -1,0 +1,32 @@
+name: Research Experiment
+on:
+  workflow_dispatch: # Manual "Run" button in GitHub
+
+jobs:
+  build-and-queue:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Build Docker Image
+        run: |
+          # Build with a unique name based on the repository
+          docker build -t lab-image-${{ github.event.repository.name }} .
+
+      - name: Submit to Slurm Queue
+        run: |
+          # INSTRUCTIONS: Uncomment ONLY ONE of the 'sbatch' lines below 
+          # based on the resource requirements of your experiment.
+
+          # --- OPTION 1: FULL POWER (All 20 CPU Cores + High RAM) ---
+          # Use this for heavy data processing that doesn't need a GPU.
+          # sbatch --job-name=${{ github.event.repository.name }} --cpus-per-task=20 --mem=60G /home/wiser/scripts/run_experiment.sh lab-image-${{ github.event.repository.name }}
+
+          # --- OPTION 2: LIGHT CPU (3 Cores + Lower RAM) ---
+          # Use this for small scripts. Allows other students to run tasks in parallel.
+          # sbatch --job-name=${{ github.event.repository.name }} --cpus-per-task=3 --mem=8G /home/wiser/scripts/run_experiment.sh lab-image-${{ github.event.repository.name }}
+
+          # --- OPTION 3: AI EXPERIMENT (3 Cores + GPU + 16GB RAM) ---
+          # Use this for model training. This will BLOCK the T1000 for other students.
+          sbatch --job-name=${{ github.event.repository.name }} --cpus-per-task=3 --gres=gpu:1 --mem=16G /home/wiser/scripts/run_experiment.sh lab-image-${{ github.event.repository.name }}
